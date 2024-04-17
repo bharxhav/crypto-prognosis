@@ -2,7 +2,7 @@ name: Update Data
 
 on:
     schedule:
-        - cron: "0 11 * * 1-5" # Runs at 11 am, Monday through Friday
+        - cron: "0 15 * * 1-5" # Runs at 11 am, Monday through Friday, UTC-4
 
 jobs:
     update:
