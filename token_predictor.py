@@ -143,7 +143,7 @@ class TokenPredictor:
         Returns:
         None
         """
-        self.model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=epochs, batch_size=batch_size, verbose=1)
+        self.model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=epochs, batch_size=batch_size, verbose=2)
 
     def train(self, directory='./data/'):
         """
