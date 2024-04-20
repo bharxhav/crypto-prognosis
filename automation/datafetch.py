@@ -1,6 +1,5 @@
 import os
 import json
-import pandas as pd
 import yfinance as yf
 from datetime import datetime
 
@@ -25,19 +24,9 @@ def update_with_today(token, ASSETS, TODAYS, START_DATE):
 
     # Fetching Stock Data
     data_path = os.path.join(ASSETS, f"{token}.csv")
-    if os.path.exists(data_path):
-        data = pd.read_csv(data_path)
-        last_date = pd.to_datetime(data['Date'].iloc[-1])
-    else:
-        last_date = START_DATE
     
-    # Update data
-    new_data = yf.download(token, start=last_date)
-    if not new_data.empty:
-        if os.path.exists(data_path):
-            data = pd.concat([data, new_data])
-        else:
-            data = new_data
+    # Fetch data
+    data = yf.download(token, start=START_DATE)
 
     # Save updated data
     data.to_csv(data_path)
