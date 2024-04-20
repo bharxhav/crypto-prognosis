@@ -170,3 +170,19 @@ class TokenPredictor:
         prediction = self.model.predict(self.x_last.reshape(1, -1, 24))
 
         return self.yscaler.inverse_transform(prediction)
+
+    def calculate_probability(self, high_pred, open_price, delta=0.01):
+        """
+        Calculate the probability that High >= (1 + delta) * Open.
+
+        Args:
+        - high_pred: Predicted high price.
+        - open_price: Today's open price.
+        - delta: Percentage increase threshold above the open price (default: 1%).
+
+        Returns:
+        - probability: Probability that High >= (1 + delta) * Open.
+        """
+        threshold = (1 + delta) * open_price
+        probability = (high_pred >= threshold) * 100  # Probability in percentage
+        return probability
