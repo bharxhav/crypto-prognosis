@@ -40,7 +40,7 @@ def update_with_today(token, ASSETS, TODAYS, START_DATE):
             data = new_data
 
     # Save updated data
-    data.to_csv(data_path, index=False)
+    data.to_csv(data_path)
 
     # Fetching Opens, Highs, Lows, and Closes
     today_data = yf.Ticker(token).history(period="1d")
