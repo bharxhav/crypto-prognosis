@@ -159,7 +159,7 @@ class TokenPredictor:
         self._create_lstm_model(x_train.shape)
         self._train_model(x_train, y_train, x_test, y_test)
 
-    def _predict(self):
+    def predict(self):
         """
         Predict the next day's high.
 
