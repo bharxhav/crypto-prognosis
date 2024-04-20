@@ -169,7 +169,7 @@ class TokenPredictor:
         # Predicting the next day's high
         prediction = self.model.predict(self.x_last.reshape(1, -1, 24))
 
-        return self.yscaler.inverse_transform(prediction)
+        return self.yscaler.inverse_transform(prediction)[0][0]
 
     def calculate_probability(self, high_pred, open_price, delta=0.01):
         """
