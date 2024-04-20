@@ -7,7 +7,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from token_predictor import TokenPredictor
 
 tp = TokenPredictor()
-tp.train()
+tp.train(directory="../data/")
 prediction = tp.predict()
 
 with open('../README.md', 'r') as f:

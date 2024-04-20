@@ -22,6 +22,8 @@ class TokenPredictor:
         self.model = None
         self.scaler = StandardScaler()
         self.timesteps = 150
+        self.yscaler = None
+        self.x_last = None
 
     def _load_and_preprocess_data(self, main, assets, directory="./data/"):
         """
@@ -143,7 +145,7 @@ class TokenPredictor:
         """
         self.model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=epochs, batch_size=batch_size, verbose=1)
 
-    def train(self):
+    def train(self, directory='./data/'):
         """
         Train the LSTM model using data from CSV files.
 
@@ -153,7 +155,7 @@ class TokenPredictor:
         Returns:
         None
         """
-        x, y = self._load_and_preprocess_data('GBTC', ['ETCG', 'ETHE', 'GDLC'])
+        x, y = self._load_and_preprocess_data('GBTC', ['ETCG', 'ETHE', 'GDLC'], directory)
         x_train, x_test, y_train, y_test = self._lstm_chunking(x, y)
 
         self._create_lstm_model(x_train.shape)
