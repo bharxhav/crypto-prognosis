@@ -16,5 +16,5 @@ with open('../README.md', 'r') as f:
 with open('../README.md', 'w') as f:
     for line in lines:
         if 'Expected close for GBTC: ``' in line:
-            line = line.replace('Expected close for GBTC: ``', f'Expected close for GBTC: `{prediction}`')
+            line = line.replace('Expected close for GBTC: ``', f'Expected close for GBTC today: `{prediction}`')
         f.write(line)
