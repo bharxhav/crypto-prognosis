@@ -4,4 +4,4 @@ A forecasting algorithm that classifies financial viability.
 
 ## Current Prediction
 
-Expected close for GBTC: `58.4189453125`
+Expected high for GBTC: `58.4189453125`
