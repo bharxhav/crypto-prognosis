@@ -1,203 +1,224 @@
-"""
-Predicts today's trade strategy.
-"""
-
-import pandas as pd
-import numpy as np
 import json
-from sklearn.preprocessing import StandardScaler
+import os
+
+import numpy as np
+import pandas as pd
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import LSTM, Dense
+
 
 class TokenPredictor:
     """
     TokenPredictor class for predicting token prices using LSTM neural network.
     """
 
-    def __init__(self):
+    def __init__(self, timesteps=150):
         """
         Initialize TokenPredictor with attributes.
+
+        Args:
+            timesteps (int): Number of time steps for LSTM input (default: 150)
         """
         self.model = None
         self.scaler = StandardScaler()
-        self.timesteps = 150
-        self.yscaler = None
+        self.timesteps = timesteps
+        self.yscaler = StandardScaler()
         self.x_last = None
+        self.feature_count = None
 
     def _load_and_preprocess_data(self, main, assets, directory="./data/"):
         """
         Load and preprocess data from CSV files and JSON files.
 
         Args:
-        - main (str): The main asset for which data is loaded.
-        - assets (list): List of additional assets.
-        - directory (str, optional): Directory where data files are located.
+            main (str): The main asset for which data is loaded
+            assets (list): List of additional assets
+            directory (str): Directory where data files are located
 
         Returns:
-        - x (array): Preprocessed input features.
-        - y (array): Preprocessed target values.
+            tuple: (x, y) preprocessed input features and target values
+
+        Raises:
+            FileNotFoundError: If required files are not found
+            ValueError: If data format is incorrect
         """
-        assets_dir = directory + "assets/{}.csv"
-        todays_dir = directory + "todays/{}.json"
-        cols = ['Date', 'Open', 'High', 'Low', 'Close', 'Adj Close', 'Volume']
+        try:
+            assets_dir = os.path.join(directory, "assets", "{}.csv")
+            todays_dir = os.path.join(directory, "todays", "{}.json")
+            cols = ['Date', 'Open', 'High', 'Low',
+                    'Close', 'Adj Close', 'Volume']
 
-        x = pd.read_csv(assets_dir.format(main))
+            # Load main asset data
+            main_file = assets_dir.format(main)
+            if not os.path.exists(main_file):
+                raise FileNotFoundError(
+                    f"Main asset file not found: {main_file}")
 
-        for token in assets:
-            df2 = pd.read_csv(assets_dir.format(token))
+            x = pd.read_csv(main_file)
+            if not all(col in x.columns for col in cols):
+                raise ValueError(f"Missing required columns in {main_file}")
 
-            columns = cols.copy()
-            columns = [columns[0]] + [col + "_" + token for col in columns[1:]]
+            # Load and merge additional assets
+            for token in assets:
+                token_file = assets_dir.format(token)
+                if not os.path.exists(token_file):
+                    print(f"Warning: Asset file not found: {token_file}")
+                    continue
 
-            x = x.merge(df2, on="Date", how="left", suffixes=('', '_' + token))
+                df2 = pd.read_csv(token_file)
+                if not all(col in df2.columns for col in cols):
+                    print(
+                        f"Warning: Missing columns in {token_file}, skipping")
+                    continue
 
-        y = x['Open'].shift(-1).to_list()
+                # Rename columns for merging
+                rename_cols = {col: f"{col}_{token}" for col in cols[1:]}
+                df2 = df2.rename(columns=rename_cols)
 
-        todays_high_estimate = json.load(open(todays_dir.format('GBTC')))['high']
-        y.pop(0)
-        y.append(todays_high_estimate)
+                x = pd.merge(x, df2, on="Date", how="left")
 
-        y = np.array(y).reshape((-1, 1))
+            # Load today's estimates
+            todays_file = todays_dir.format(main)
+            if not os.path.exists(todays_file):
+                raise FileNotFoundError(
+                    f"Today's estimates file not found: {todays_file}")
 
-        ## Scaling
-        x.drop(columns=['Date'], inplace=True)
-        x = self.scaler.fit_transform(x)
+            with open(todays_file, 'r') as f:
+                todays_data = json.load(f)
+                todays_high_estimate = todays_data['high']
 
-        self.yscaler = StandardScaler()
-        y = self.yscaler.fit_transform(y)
+            # Prepare target variable
+            y = x['Open'].shift(-1).tolist()
+            y.pop(0)
+            y.append(todays_high_estimate)
+            y = np.array(y).reshape((-1, 1))
 
-        return x, y
+            # Scale the data
+            x = x.drop(columns=['Date'])
+            x = self.scaler.fit_transform(x)
+            y = self.yscaler.fit_transform(y)
+
+            self.feature_count = x.shape[1]
+
+            return x, y
+
+        except Exception as e:
+            raise Exception(f"Error in data preprocessing: {str(e)}")
 
     def _lstm_chunking(self, x, y, test_size=0.2, random_state=42):
         """
         Chunk input features and target values for LSTM modeling.
 
         Args:
-        - x (array): Input features.
-        - y (array): Target values.
-        - test_size (float, optional): Fraction of the dataset to include in the test split.
-        - random_state (int, optional): Controls the randomness of the training and testing splits.
+            x (array): Input features
+            y (array): Target values
+            test_size (float): Test set size ratio
+            random_state (int): Random seed for reproducibility
 
         Returns:
-        - x_train (array): Training input features.
-        - x_test (array): Testing input features.
-        - y_train (array): Training target values.
-        - y_test (array): Testing target values.
+            tuple: Training and test sets (x_train, x_test, y_train, y_test)
         """
         x_stack, y_stack = [], []
 
         for i in range(self.timesteps, len(x)):
-            x_stack.append(x[i - self.timesteps:i,:])
+            x_stack.append(x[i - self.timesteps:i, :])
             y_stack.append(y[i])
-        
+
         x_stack, y_stack = np.array(x_stack), np.array(y_stack)
 
-        print(x_stack.shape)
-        print(y_stack.shape)
-        print()
-
-        # For prediction
+        # Store last window for prediction
         self.x_last = x_stack[-1]
 
-        x_train, x_test, y_train, y_test = train_test_split(x_stack, y_stack, test_size=test_size, random_state=random_state)
-
-        return x_train, x_test, y_train, y_test
+        return train_test_split(x_stack, y_stack, test_size=test_size,
+                                random_state=random_state, shuffle=False)
 
     def _create_lstm_model(self, input_shape):
         """
         Create an LSTM neural network model.
 
         Args:
-        - input_shape (tuple): Input shape for the model.
-
-        Returns:
-        None
+            input_shape (tuple): Input shape for the model
         """
         features = input_shape[-1]
-        
-        model = Sequential()
 
-        model.add(LSTM(units=features, return_sequences=True, input_shape=input_shape[1:]))
-        model.add(LSTM(units=features, return_sequences=True))
-        model.add(LSTM(units=features//2, return_sequences=True))
-        model.add(LSTM(units=features//4, return_sequences=False))
-        model.add(Dense(units=1))
+        model = Sequential([
+            LSTM(units=features, return_sequences=True,
+                 input_shape=input_shape[1:]),
+            Dropout(0.2),
+            LSTM(units=features, return_sequences=True),
+            Dropout(0.2),
+            LSTM(units=features//2, return_sequences=True),
+            Dropout(0.2),
+            LSTM(units=features//4, return_sequences=False),
+            Dropout(0.2),
+            Dense(units=1)
+        ])
 
         model.compile(optimizer='adam', loss='mean_squared_error')
-        
         self.model = model
 
-    def _train_model(self, x_train, y_train, x_test, y_test, epochs=100, batch_size=128):
-        """
-        Train the LSTM model.
-
-        Args:
-        - x_train (array): Training input features.
-        - y_train (array): Training target values.
-        - x_test (array): Testing input features.
-        - y_test (array): Testing target values.
-        - epochs (int, optional): Number of epochs to train the model.
-        - batch_size (int, optional): Number of samples per gradient update.
-
-        Returns:
-        None
-        """
-        self.model.fit(x_train, y_train, validation_data=(x_test, y_test), epochs=epochs, batch_size=batch_size, verbose=2)
-
-    def train(self, directory='./data/'):
+    def train(self, directory='./data/', epochs=100, batch_size=128):
         """
         Train the LSTM model using data from CSV files.
 
         Args:
-        - csv_loc (str): Location of the CSV file.
-
-        Returns:
-        None
+            directory (str): Data directory path
+            epochs (int): Number of training epochs
+            batch_size (int): Training batch size
         """
-        x, y = self._load_and_preprocess_data('GBTC', ['ETCG', 'ETHE', 'GDLC'], directory)
-        x_train, x_test, y_train, y_test = self._lstm_chunking(x, y)
+        try:
+            # Load and preprocess data
+            x, y = self._load_and_preprocess_data('GBTC', ['ETCG', 'ETHE', 'GDLC'],
+                                                  directory)
 
-        self._create_lstm_model(x_train.shape)
-        self._train_model(x_train, y_train, x_test, y_test)
+            # Create training and test sets
+            x_train, x_test, y_train, y_test = self._lstm_chunking(x, y)
+
+            # Create and train model
+            self._create_lstm_model(x_train.shape)
+
+            self.model.fit(
+                x_train, y_train,
+                validation_data=(x_test, y_test),
+                epochs=epochs,
+                batch_size=batch_size,
+                verbose=2
+            )
+
+        except Exception as e:
+            raise Exception(f"Error during training: {str(e)}")
 
     def predict(self):
         """
         Predict the next day's high.
 
         Returns:
-        - prediction (array): Predicted next day's high.
+            float: Predicted next day's high price
         """
-        # Predicting the next day's high
-        prediction = self.model.predict(self.x_last.reshape(1, -1, 24))
+        if self.model is None:
+            raise ValueError("Model has not been trained yet")
 
-        return self.yscaler.inverse_transform(prediction)[0][0]
-    
-    def sim_predict(self, x_window):
-        """
-        Predict the next day's high for an specified window.
-
-        Returns:
-        - prediction (array): Predicted next day's high.
-        """
-        # Predicting the next day's high
-        prediction = self.model.predict(x_window.reshape(1, -1, 24))
-
-        return self.yscaler.inverse_transform(prediction)[0][0]
-    
+        try:
+            prediction = self.model.predict(
+                self.x_last.reshape(1, self.timesteps, self.feature_count)
+            )
+            return float(self.yscaler.inverse_transform(prediction)[0][0])
+        except Exception as e:
+            raise Exception(f"Prediction error: {str(e)}")
 
     def calculate_probability(self, high_pred, open_price, delta=0.01):
         """
         Calculate the probability that High >= (1 + delta) * Open.
 
         Args:
-        - high_pred: Predicted high price.
-        - open_price: Today's open price.
-        - delta: Percentage increase threshold above the open price (default: 1%).
+            high_pred (float): Predicted high price
+            open_price (float): Today's open price
+            delta (float): Percentage increase threshold
 
         Returns:
-        - probability: Probability that High >= (1 + delta) * Open.
+            float: Probability percentage
         """
         threshold = (1 + delta) * open_price
-        probability = (high_pred >= threshold) * 100  # Probability in percentage
-        return probability
+        return float((high_pred >= threshold) * 100)
